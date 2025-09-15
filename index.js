@@ -382,3 +382,17 @@ Thank you for connecting with Comfortly! 💛
 });
 
 console.log('Bot is running…');
+
+// Optional: Keep bot alive on Render
+const express = require('express');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+  res.send('Comfortly bot is running!');
+});
+
+app.listen(PORT, () => {
+  console.log(`Express server running on port ${PORT}`);
+});
+
