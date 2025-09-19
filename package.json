@@ -1,20 +1,21 @@
 {
-  "name": "comfortly-bot",
+  "name": "comfortly",
   "version": "1.0.0",
-  "description": "Comfortly Telegram Bot",
+  "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
     "dotenv": "^17.2.2",
+    "express": "^5.1.0",
     "firebase": "^12.2.1",
     "node-telegram-bot-api": "^0.66.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC"
+  }
 }
