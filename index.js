@@ -158,7 +158,14 @@ bot.on('callback_query', async (query) => {
     // ---------- Approve / Reject specific user (admin inline buttons) ----------
     if (isAdmin && data.startsWith('approve_')) {
       const userId = data.split('_')[1];
-      await updateDoc(doc(db, 'users', userId), { approved: true, awaitingApproval: false, balance: 0, calls: 0, subscriptionEnd: null, history: [] });
+      // use setDoc/merge or updateDoc after checking existence
+      const targetRef = doc(db, 'users', userId);
+      const targetSnap = await getDoc(targetRef);
+      if (!targetSnap.exists()) {
+        await bot.sendMessage(chatId, `❌ User ${userId} not found in Firestore.`);
+        return bot.answerCallbackQuery(query.id);
+      }
+      await updateDoc(targetRef, { approved: true, awaitingApproval: false, balance: 0, calls: 0, subscriptionEnd: null, history: [] });
       await bot.sendMessage(userId, '✅ Your payment has been approved by admin. Welcome aboard!', { parse_mode: 'Markdown', ...dashboardMenu });
       await bot.sendMessage(chatId, `✅ User ${userId} approved.`);
       return bot.answerCallbackQuery(query.id);
@@ -166,7 +173,13 @@ bot.on('callback_query', async (query) => {
 
     if (isAdmin && data.startsWith('reject_')) {
       const userId = data.split('_')[1];
-      await updateDoc(doc(db, 'users', userId), { approved: false, awaitingApproval: false });
+      const targetRef = doc(db, 'users', userId);
+      const targetSnap = await getDoc(targetRef);
+      if (!targetSnap.exists()) {
+        await bot.sendMessage(chatId, `❌ User ${userId} not found in Firestore.`);
+        return bot.answerCallbackQuery(query.id);
+      }
+      await updateDoc(targetRef, { approved: false, awaitingApproval: false });
       await bot.sendMessage(userId, '❌ Your payment was rejected. Please contact support.');
       await bot.sendMessage(chatId, `❌ User ${userId} rejected.`);
       return bot.answerCallbackQuery(query.id);
@@ -234,7 +247,7 @@ Tap *I Accept the NDA* to continue.
 
     // ---------- Upload receipt trigger ----------
     if (data === 'upload_receipt') {
-      await updateDoc(doc(db, 'users', String(chatId)), { awaitingReceipt: true });
+      await setDoc(doc(db, 'users', String(chatId)), { awaitingReceipt: true }, { merge: true });
       await bot.sendMessage(chatId, '📤 Please upload your payment receipt (photo or PDF).');
       return bot.answerCallbackQuery(query.id);
     }
@@ -324,7 +337,13 @@ bot.on('message', async (msg) => {
         }
         if (st.step === 'subscriptionEnd') {
           const subEnd = text.toLowerCase() === 'none' ? null : text;
-          await updateDoc(doc(db, 'users', st.data.userId), {
+          const targetRef = doc(db, 'users', st.data.userId);
+          const targetSnap = await getDoc(targetRef);
+          if (!targetSnap.exists()) {
+            delete adminStates[chatId];
+            return bot.sendMessage(chatId, `❌ User ${st.data.userId} not found.`);
+          }
+          await updateDoc(targetRef, {
             balance: st.data.balance,
             calls: st.data.calls,
             subscriptionEnd: subEnd
@@ -419,18 +438,33 @@ bot.on('message', async (msg) => {
     // Receipt upload handling (photos/documents) — store fileId and send to admin
     if (u && u.awaitingReceipt && (msg.photo || msg.document)) {
       const fileId = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document.file_id;
-      await updateDoc(userRef, { paymentProof: fileId, awaitingReceipt: false, awaitingApproval: true });
+      // Use setDoc merge to create if missing or update if exists
+      await setDoc(userRef, { paymentProof: fileId, awaitingReceipt: false, awaitingApproval: true }, { merge: true });
+
       const adminId = process.env.ADMIN_TELEGRAM_ID;
       const caption = `Payment receipt from UserID:${chatId}`;
+
+      // IMPORTANT: embed userId in approval button to avoid ambiguous callbacks
+      const approveCallback = `approve_${chatId}`;
+      const rejectCallback = `reject_${chatId}`;
+
       if (msg.photo) {
         await bot.sendPhoto(adminId, fileId, {
           caption,
-          reply_markup: { inline_keyboard: [[{ text: '✅ Approve Talker', callback_data: 'approve_payment' }, { text: '❌ Reject', callback_data: `reject_${chatId}` }]] }
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '✅ Approve Talker', callback_data: approveCallback }, { text: '❌ Reject', callback_data: rejectCallback }]
+            ]
+          }
         });
       } else {
         await bot.sendDocument(adminId, fileId, {
           caption,
-          reply_markup: { inline_keyboard: [[{ text: '✅ Approve Talker', callback_data: 'approve_payment' }, { text: '❌ Reject', callback_data: `reject_${chatId}` }]] }
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '✅ Approve Talker', callback_data: approveCallback }, { text: '❌ Reject', callback_data: rejectCallback }]
+            ]
+          }
         });
       }
       return bot.sendMessage(chatId, '✅ Receipt received. We’ll notify you once approved.');
